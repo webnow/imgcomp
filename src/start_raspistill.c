@@ -12,16 +12,22 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <signal.h>
 
 #include "imgcomp.h"
+#include "config.h"
 #include "jhead.h"
 
 static int raspistill_pid = 0;
 static int blink_led_pid = 0;
 
+static char OutNameSeq = 'a';
+
 int relaunch_timeout = 6;
 int give_up_timeout = 18;
 
+int kill(pid_t pid, int sig);
 //-----------------------------------------------------------------------------------
 // Parse command line and launch.
 //-----------------------------------------------------------------------------------
@@ -65,9 +71,9 @@ static void do_launch_program(char * cmd_string)
 }
 
 //-----------------------------------------------------------------------------------
-// Parse command line and launch.
+// Launch or re-launch raspistill.
 //-----------------------------------------------------------------------------------
-static int launch_raspistill(void)
+int relaunch_raspistill(void)
 {
     pid_t pid;
 
@@ -90,6 +96,29 @@ static int launch_raspistill(void)
     }
 
     fprintf(Log,"Launching raspistill program\n");
+
+    int DashOOption = (strstr(raspistill_cmd, " -o ") != NULL);
+
+    static char cmd_appended[300];
+    strncpy(cmd_appended, raspistill_cmd, 200);
+
+    if (ExposureManagementOn) { // Exposure managemnt by imgcomp
+        strcat(cmd_appended, GetRaspistillExpParms());
+        if (DashOOption){
+            fprintf(stderr, "Must not specify -o option with -exm option\n");
+            exit(-1);
+        }
+    }
+
+    if (!DashOOption){
+        // No output specified with raspistill command  Add the option,
+        // with a different prefix each time so numbers don't overlap.
+        int l = strlen(cmd_appended);
+        sprintf(cmd_appended+l," -o %s/out%c%%05d.jpg",DoDirName, OutNameSeq++);
+        if (OutNameSeq >= 'z') OutNameSeq = 'a';
+        //fprintf(Log,"Run program: %s\n",cmd_appended);
+    }
+
     pid = fork();
     if (pid == -1){
         // Failed to fork.
@@ -99,12 +128,13 @@ static int launch_raspistill(void)
         return -1;
     }
 
-    if(pid == 0){ 
+    if(pid == 0){
         // Child takes this branch.
-        do_launch_program(raspistill_cmd);
+        do_launch_program(cmd_appended);
     }else{
         raspistill_pid = pid;
     }
+
     return 0;
 }
 
@@ -113,11 +143,9 @@ static int launch_raspistill(void)
 //-----------------------------------------------------------------------------------
 static int MsSinceImage = 0;
 static int MsSinceLaunch = 0;
-static int InitialAverageBright;
 static int InitialBrSum;
 static int InitialNumBr;
 static int NumTotalImages;
-static double RunningAverageBright;
 
 int manage_raspistill(int NewImages)
 {
@@ -127,11 +155,6 @@ int manage_raspistill(int NewImages)
     if (NewImages > 0){
         MsSinceImage = 0;
 		NumTotalImages += NewImages;
-        if (MsSinceLaunch <= 2000 && BrightnessChangeRestart){
-            fprintf(Log,"Exp:%5.1fms Iso:%d  Bright:%d  av=%5.2f\n",
-                ImageInfo.ExposureTime*1000, ImageInfo.ISOequivalent, 
-                NewestAverageBright, RunningAverageBright);
-        }
     }else{
         if (MsSinceImage >= 3000){
             time_t now = time(NULL);
@@ -172,46 +195,10 @@ int manage_raspistill(int NewImages)
 			}
 		}
     }
-
-    if (BrightnessChangeRestart){
-        // If brightness of image changes a lot, restart raspistill, because
-        // raspistill doesn't normally do running exposure adjustments.
-        
-        if (MsSinceLaunch > 3000 && InitialNumBr < 4 && NewImages){
-            fprintf(Log,"Brightness average in: %d\n",NewestAverageBright);
-            InitialBrSum += NewestAverageBright;
-            InitialNumBr += 1;
-            // Save average brightness and reset averaging.
-            if (InitialNumBr == 4){
-                InitialAverageBright = (InitialBrSum+2) / 4;
-                if (InitialAverageBright == 0) InitialAverageBright = 1; // Avoid division by zero.
-                RunningAverageBright = InitialAverageBright;
-                fprintf(Log,"Initial brightness average = %d\n",InitialAverageBright);
-            }
-        }
-
-        // 20 second time constant brightness averaging.
-        RunningAverageBright = RunningAverageBright * 0.95 + NewestAverageBright * 0.05;
-
-        // If brightness changes by more than 20%, relaunch, but only if its not too dark.
-        if (MsSinceLaunch > 10000 && (RunningAverageBright > 25 || InitialAverageBright > 25)){
-            double Ratio;
-            Ratio = RunningAverageBright / InitialAverageBright;
-            if (Ratio < 1) Ratio = 1/Ratio;
-            if (Ratio > 1.2){
-                fprintf(Log,"Brightness change by 20%%  (is %d was %d)  Force restart\n",
-				       (int)RunningAverageBright,(int)InitialAverageBright);
-                goto force_restart;
-            }
-        }
-        // Smarter things to do later:
-        // If image too bright and shutter speed is not fastest, launch raspistill
-        // if image is too dark and shutter speed is not 1/8, launch raspistill.
-    }
     return 0;
-    
+
 force_restart:
-    launch_raspistill();
+    relaunch_raspistill();
     MsSinceLaunch = 0;
     InitialBrSum = InitialNumBr = 0;
     return 1;
@@ -255,7 +242,7 @@ void run_blink_program()
         return;
     }
 
-    if(pid == 0){ 
+    if(pid == 0){
         // Child takes this branch.
         do_launch_program(blink_cmd);
     }else{

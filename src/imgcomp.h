@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------
 // imgcomp structures and function prototypes
-// Matthias Wandel 2015-2018
+// Matthias Wandel 2015-2020
 //
 // Imgcomp is licensed under GPL v2 (see README.txt)
 //----------------------------------------------------------------------------
@@ -35,6 +35,17 @@ typedef struct {
     int values[0];
 }ImgMap_t;
 
+typedef struct {
+    int ISOmin, ISOmax; // Limits of ISO values to pass to raspistill
+    float Tmin, Tmax;   // Limits of exposure time (in seconds) to pass to raspistill
+
+    int SatVal;         // Saturated pixel value (some cameras saturate before 255)
+    int ISOoverExTime;  // Target ISO/exposure time.  Larger values prioritize
+                        // fast shutter speed at expenso of grainy photos.
+}exconfig_t;
+
+extern exconfig_t ex;
+
 
 MemImage_t MemImage;
 extern int NewestAverageBright;
@@ -54,12 +65,15 @@ extern Regions_t Regions;
 ImgMap_t * WeightMap;
 
 extern time_t LastPic_mtime;
-extern int GateDelay; // In frames, how long no motion before inching gate closed.
-
 
 // Vidoe segment mode:
 extern int VidMode; // Video mode flag
 extern char VidDecomposeCmd[200];
+
+// exposure.c functions
+char * GetRaspistillExpParms();
+int CalcExposureAdjust(MemImage_t * pic);
+
 
 // compare_util.c functions
 void FillWeightMap(int width, int height);
@@ -71,15 +85,16 @@ void ShowImgMap(ImgMap_t * map, int divisor);
 void BloomImgMap(ImgMap_t * src, ImgMap_t * dst);
 int BlockFilterImgMap(ImgMap_t * src, ImgMap_t * dst, int fw, int fh, int * pmaxc, int * pmaxr);
 
+// compare.c function
+TriggerInfo_t ComparePix(MemImage_t * pic1, MemImage_t * pic2, int UpdateFatigue, int SkipFatigue, char * DebugImgName);
 
-// compare.c functions
-TriggerInfo_t ComparePix(MemImage_t * pic1, MemImage_t * pic2, char * DebugImgName);
 
 // jpeg2mem.c functions
 MemImage_t * LoadJPEG(char* FileName, int scale_denom, int discard_colors, int ParseExif);
 void WritePpmFile(char * FileName, MemImage_t *MemImage);
 
 // start_raspistill functions
+int relaunch_raspistill(void);
 int manage_raspistill(int HaveNewImages);
 extern char raspistill_cmd[200];
 extern char blink_cmd[200];

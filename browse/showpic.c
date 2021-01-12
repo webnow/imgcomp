@@ -30,9 +30,6 @@
 //----------------------------------------------------------------------------------
 void MakeViewPage(char * ImageName, Dir_t * dir)
 {
-    int DirIndex;
-    int FoundMatch;
-    int From,To;
     int IsSavedDir = 0;
     char * HtmlDir;
     VarList Images;
@@ -61,14 +58,6 @@ void MakeViewPage(char * ImageName, Dir_t * dir)
 
     // Output HTML code for the buttons below the row of navigation links
     {
-        char IndexInto[8];
-        IndexInto[0] = 0;
-        if (strlen(ImageName) >= 10){
-            IndexInto[0] = '#';
-            IndexInto[1] = ImageName[7];
-            IndexInto[2] = ImageName[8];
-            IndexInto[3] = '\0';
-        }
         printf("<span id='this'>this</span>\n");
         printf("<button id='big' onclick=\"ShowBigClick()\">Enlarge</button>\n");
         printf("<button id='bright' onclick=\"ShowBrightClick()\">Brighten</button>\n");
@@ -104,11 +93,17 @@ void MakeViewPage(char * ImageName, Dir_t * dir)
         }
         
         printf("&nbsp;");
-        if (dir->Previous[0]) printf("<a href='#' id='prevdir'>&lt;&lt;</a>",dir->Previous);
-        if (dir->Next[0]) printf("&nbsp;<a href='#' id='nextdir'>>></a> ",dir->Next);
+        if (dir->Previous[0]) printf("<a href='#' id='prevdir'>&lt;&lt;</a>");
+        if (dir->Next[0]){
+            printf("&nbsp;<a href='#' id='nextdir'>>></a>");
+        }else{
+            // Maybe only show link to realtime.html if looking at the current day?
+            printf("&nbsp;<a href='realtime.html'>Rt</a>");
+        }
         printf("\n");
     }
-    printf("<br>Actagram:\n<b><span id='actagram' style=\"font-family: courier, \'courier new\', monospace;\">Actagram here</span></b>\n");
+    printf("<br>\n<canvas id='hist' width='960' height='35' "
+           "style=\"margin-top: 5px; border-width: 1px; border:1px solid #000000;\"></canvas>\n");
 
     //printf("</center>dbg:[<span id='dbg'>xxx</span>]\n");
     // check how many characters all the filenames have in common (typically 7)

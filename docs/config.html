@@ -44,21 +44,46 @@ The file "imgcomp.conf.example" contains an example imgcomp.conf file.
 I recommend you start with that file.
 
 <div class="p">aquire_cmd</div>
-Specifies the raspistill command and command line options to use.  This line contains
-all the raspistill options.
+Specifies the raspistill command and command line options to use.
+The "-o" option for where to put the output is appended to this command line.
+Also, the -ss and -ISO options will be appended if the exmanage option is enabled.
 
-<div class="p">brmonitor</div>
-Set to 1 for brightness change monitoring.  This feature is used together with burst
-mode in raspistill (-bm option in aquire command).  In burst mode, raspistill does not
-do exposure level tracking, so imgcomp will restart it if necessary to re-acquire
-the exposure value.
+<div class="p">exmanage 1</div>
+Set to 1 for imgcomp to manage exposure (because I found raspistill's auto exposure
+management too limiting).  When enabled, imgcomp analyzes the images to determine if
+exposure adjustment is needed, and restarts raspistill with new ISO and shutter
+speed settings when light levels change.  This feature is useful for not underexposing
+images that are predominantly white, such as snow on the ground or white walls.
+It also allows better compromising between grainy images and less motion blur.
+
+<div class="p">iso &ltmin>-&ltmax></div>
+With -exmanage 1, Limits of ISO settings to use with raspistill.  Must be 25-6400
+ <div class="p">exposure &ltmin>-&ltmax></div>
+With -exmanage 1, Limits to shutter speeds (in seconds) to use with raspistill.  0.0001-0.25
+Length is limited to 0.25 because raspistill becomes unstable with long shutter
+speeds in timelapse mode.
+
+<div class="p">isooverextime</div>
+with -exmanage 1, sets the ISO/shutter speed curve Unless ISO or exposure time
+limits are hit.  imgcomp will aim for ISO divided by exposure time to be this value.
+Default 16000.  Larger means shorter shutter speeds, smaller means lower
+ISO (less grainy) but slower shutter, more motion blur.
+<p>
+At 16000, it will pick ISO 160 with 0.01s exposure time.<br>
+With the same light level:<br>
+At 64000, it will pick ISO 320 with 0.005s exposure time. (more grainy but less motion blur)<p>
+
+
+<div class="p">pixxat &ltval></div>
+with -exmanage 1, Jpeg pixel value at which image saturates because camera
+modules v1 and v2 saturate before hitting 255.  Defaults to value appropriate
+for camera module detected\n"
 
 <div class="p">scale</div>
 How much to scale jpeg images by before running the detection algorithm.  Scaling the image
 down makes the program run faster and less susceptible to pixel noise.  Scale value can be
-1, 2, 4 or 8.  Default is 4.  I only use it with a scaling of 4 myself.
-This equates to the command line option "-scale 4" or an imgcomp.conf entry of "scale = 4".
-Warning, I have not tested this with non-default values.
+1, 2, 4 or 8.  Default is 4.  This equates to the command line option "-scale 4" or an
+imgcomp.conf entry of "scale = 4". Warning, I have not tested this with non-default values.
 
 <div class="p">region</div>
 Specifies what region of the image that detection is to be done over.
@@ -123,17 +148,34 @@ be placed in 190720/11/0720-115058.  This name will be appended with a space and
 diff magnitude value of three digits.  In addition, if more than one image is
 saved in the same second, the space in the name will be replaced with a, b, or c, etc.
 
+<div class="p">premotion</div>
+Number of images preceeding motion to save.  Can only be 0 or 1.  Default 0.
+
+<div class="p">postmotion</div>
+Number of extra images to keep beyond one with motion.  Default 0.
+
 <div class="p">sensitivity</div>
 Indicates how sensitive the program is.  I typically use values around 100.  However,
 this value is highly dependent on image resolution.  Change magnitudes peak out
 around 500 because of the change magnitude is calculated over a limited size region.
 
-<div class="p">fatigue</div>
+<div class="p">fatigue_tc</div>
 Motion fatigue time constant, default exponential decay averaging with a 30 image
 time-constant.  Imgcomp will make areas with
 repeated motion less senstitive to avoid triggering on things moving in the wind
 such as flags or vegetation.  This feature is on by default.  Set this to zero
 to turn off motion fatigue.
+
+<div class="p">fatigue_percent</div>
+Gain factor for motion fatigue strength.  Default 100.  Setting it
+to 70 would cause motion fatigue effect to only be 70% as strong as by default.
+
+<div class="p">fatigue_skip</div>
+Skip applying motion fatigue every n frames.  I use this for timelapses in my workshop.
+Motion fatigue will start to kick in if I am doing repetitive tasks in one location,
+which is useful for saving disk space.  but I still want <i>some</i> images of repeated
+motion to get saved, so I set this value to 10 to not subtract motion fatigue
+for every tenth frame.  Default 0 (off)
 
 <div class="p">spurious</div>
 Set to '1' for spurious detection on, '0' for spurious detection off.  Default off.

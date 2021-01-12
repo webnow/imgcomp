@@ -12,37 +12,16 @@
 #include <string.h>
 #include <time.h>
 #include <fcntl.h>
-
-#ifdef _WIN32
-    #include "readdir.h"
-    #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
-    #define strdup(a) _strdup(a) 
-    #include <sys/utime.h>
-    #define open(a,b,c) _open(a,b,c)
-    #define read(a,b,c) _read(a,b,c)
-    #define write(a,b,c) _write(a,b,c)
-    #define close(a) _close(a)
-    #define unlink(n) _unlink(n)
-#else
-    #include <dirent.h>
-    #include <unistd.h>
-    #include <utime.h>
-    #define O_BINARY 0
-#endif
-
-#ifdef _WIN32
-    #include <direct.h> // for mkdir under windows.
-    #define mkdir(dir,mode) _mkdir(dir)
-    #define S_ISDIR(a)   (a & _S_IFDIR)
-    #define PATH_MAX _MAX_PATH
-#else
-    #ifndef PATH_MAX
-        #define PATH_MAX 1024
-    #endif
+#include <dirent.h>
+#include <unistd.h>
+#include <utime.h>
+#ifndef PATH_MAX
+    #define PATH_MAX 1024
 #endif
 
 #include "imgcomp.h"
 
+static int BackupImageCount = 0;
 //-----------------------------------------------------------------------------------
 // Concatenate dir name and file name.  Not thread safe!
 //-----------------------------------------------------------------------------------
@@ -282,6 +261,7 @@ char * BackupImageFile(char * Name, int DiffMag, int DoNotCopy)
         EnsurePathExists(DstPath, 1);
         if (!DoNotCopy) CopyFile(Name, DstPath);
     }
+    BackupImageCount ++;
     return DstPath;
 }
 
@@ -302,13 +282,13 @@ int CopyFile(char * src, char * dest)
     stat(src, &statbuf);
 
     // Open input and output files  
-    inputFd = open(src, O_RDONLY | O_BINARY, 0);
+    inputFd = open(src, O_RDONLY, 0);
     if (inputFd == -1){
         fprintf(Log,"CopyFile could not open src %s\n",src);
         exit(-1);
     }
  
-    openFlags = O_CREAT | O_WRONLY | O_TRUNC | O_BINARY;
+    openFlags = O_CREAT | O_WRONLY | O_TRUNC;
 
     filePerms = 0x1ff;
 
@@ -372,13 +352,19 @@ void LogFileMaintain(int ForceLogSaveReboot)
 		}
         if (strcmp(ThisLogTo, NewLogTo)){
             if (Log != NULL){
-                printf("Log rotate %s --> %s\n", ThisLogTo, NewLogTo);
-                fprintf(Log,"Log rotate %s --> %s\n", ThisLogTo, NewLogTo);
-                EnsurePathExists(ThisLogTo, 1);
-                fclose(Log);
-                Log = NULL;
-                CopyFile(LogToFile, ThisLogTo);
-                unlink(LogToFile);
+                if (BackupImageCount){
+                    printf("Log rotate %s --> %s\n", ThisLogTo, NewLogTo);
+                    fprintf(Log,"Log rotate %s --> %s\n", ThisLogTo, NewLogTo);
+                    EnsurePathExists(ThisLogTo, 1);
+                    fclose(Log);
+                    Log = NULL;
+                    CopyFile(LogToFile, ThisLogTo);
+                    unlink(LogToFile);
+                    BackupImageCount = 0;
+                }else{
+                    fprintf(Log,"Skip log rotate to %s (no images were saved in dir)\n", NewLogTo);
+                    strncpy(ThisLogTo, NewLogTo, PATH_MAX);
+                }
             }
         }
     }
