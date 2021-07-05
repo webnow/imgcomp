@@ -60,6 +60,7 @@ extern int BrightnessChangeRestart;
 
 extern char SaveDir[200];
 extern char SaveNames[200];
+extern char CopyJpgCmd[200];
 
 extern Regions_t Regions;
 ImgMap_t * WeightMap;
@@ -96,9 +97,12 @@ void WritePpmFile(char * FileName, MemImage_t *MemImage);
 // start_raspistill functions
 int relaunch_raspistill(void);
 int manage_raspistill(int HaveNewImages);
+void DoMotionRun(int SawMotion);
 extern char raspistill_cmd[200];
-extern char blink_cmd[200];
-void run_blink_program(void);
+extern char lighton_run[200];
+extern char lightoff_run[200];
+extern int lightoff_min;
+extern int lightoff_max;
 
 // util.c functions
 char * CatPath(char *Dir, char * FileName);
@@ -114,7 +118,6 @@ typedef struct {
 DirEntry_t * GetSortedDir(char * Directory, int * NumFiles);
 void FreeDir(DirEntry_t * FileNames, int NumEntries);
 char * BackupImageFile(char * Name, int DiffMag, int DoNotCopy);
-int CopyFile(char * src, char * dest);
 void LogFileMaintain(int ForceLotSave);
 
 

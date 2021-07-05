@@ -67,6 +67,8 @@ typedef struct {
     char  DateTime     [20];
     unsigned Height, Width;
     int   Orientation;
+    int   IsColor;
+    int   Process;    
     int   FlashUsed;
     float FocalLength;
     float ExposureTime;
@@ -86,6 +88,8 @@ typedef struct {
     float xResolution;
     float yResolution;
     int   ResolutionUnit;
+
+    int  QualityGuess;
 
 //    unsigned ThumbnailOffset;          // Exif offset to thumbnail
 //    unsigned ThumbnailSize;            // Size of thumbnail.
@@ -121,6 +125,9 @@ unsigned Get32u(void * Long);
 int Get32s(void * Long);
 void Put32u(void * Value, unsigned PutValue);
 void create_EXIF(void);
+
+// Prototypes from jpgqguess.c
+void process_DQT (const uchar * Data, int length);
 
 //--------------------------------------------------------------------------
 // Exif format descriptor stuff

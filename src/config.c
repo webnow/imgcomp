@@ -13,6 +13,50 @@
 #include "imgcomp.h"
 #include "config.h"
 
+// Configuration variables.
+char * progname;  // program name for error messages
+char DoDirName[200];
+char SaveDir[200];
+char SaveNames[200];
+char CopyJpgCmd[200];
+
+int FollowDir = 0;
+int ScaleDenom;
+int SpuriousReject = 0;
+int PostMotionKeep = 0;
+int PreMotionKeep = 0;
+int wait_close_write = 0;
+
+int ExposureManagementOn = 0;
+int MotionFatigueTc = 30;
+
+int FatigueSkipCount = 0;
+int FatigueGainPercent = 100;
+
+char DiffMapFileName[200];
+Regions_t Regions;
+
+int Verbosity = 0;
+char LogToFile[200];
+char MoveLogNames[200];
+FILE * Log;
+
+int Sensitivity;
+int Raspistill_restarted;
+int TimelapseInterval;
+char raspistill_cmd[200];
+
+char lighton_run[200];
+char lightoff_run[200];
+int lightoff_min = 10;
+int lightoff_max = 60;
+char UdpDest[30];
+
+//-----------------------------------------
+// Video mode hack specific configuration
+int VidMode; // Video mode flag
+char VidDecomposeCmd[200];
+char TempDirName[200]; 
 //-----------------------------------------------------------------------------------
 // Indicate command line usage.
 //-----------------------------------------------------------------------------------
@@ -32,12 +76,20 @@ void usage (void)// complain about bad command line
      " -followdir <srcdir>   Do dir and monitor for new images\n"
      " -savedir <saveto>     Where to save images with changes\n"
      " -savenames <scheme>   Output naming scheme.  Uses strftime\n"
+     " -copyjpgcmd <cmd>     Optional command to apply when copying jpeg image\n"
+     "                       to keep.  &i and &o will be in and out file names.\n"
+     "                       Useful to run jpegtran to make images files smaller\n"
      " -premotion <n>        0 or 1.  Keep up to 1 image before motion\n"
      " -postmotion <n>       Keep n frames after motion was detected\n"
      " -tempdir <dir>        Where to put temp images for video mode hack\n"
      " -sensitivity N        Set motion sensitivity. Lower=more sensitive\n"
-     " -blink_cmd <command>  Run this command when motion detected\n"
-     "                       (used to blink the camera LED)\n"
+
+     " -lighton_run <cmd>    Run this command when motion detected to run external\n"
+     "                       command to turn on the lights\n"
+     " -lightoff_run <cmd>   Run this command after period of no motion\n"
+     " -lightoffdelay min[-max] How long after motion to turn lights off\n"
+     "                       Specify range (such as 20-60) to allow variable\n"
+     "                       intervals based on recent activity levels\n"
      " -tl N                 Save image every N seconds regardless\n"
      " -spurious             Ignore any change that returns to\n"
      "                       previous image in the next frame\n"
@@ -57,7 +109,7 @@ void usage (void)// complain about bad command line
      "                       by exposure time to be this value.  Default 16000\n"
      "                       Larger means shorter shutter speeds, smaller means lower\n"
      "                       ISO (less grainy) but slower shutter, more motion blur\n"
-     " -pixxat <val>         with -exmanage 1, Jpeg pixel value at which image\n"
+     " -pixsat <val>         with -exmanage 1, Jpeg pixel value at which image\n"
      "                       saturates because camera modules v1 and v2 saturate\n"
      "                       before hitting 255.  Defaults to value appropriate for\n"
      "                       camera module detected\n"
@@ -206,7 +258,7 @@ static int parse_parameter (const char * tag, const char * value)
             fprintf(stderr, "Bad exposure time values.  Must be 0.0001 - 10 (seconds)\n");
             return -1;
         }
-    } else if (keymatch(tag, "pixsat", 7)) {
+    } else if (keymatch(tag, "pixsat", 6)) {
         if (sscanf(value, "%d", &ex.SatVal) != 1) return -1;
         if (ex.SatVal < 50 || ex.SatVal > 255){
             fprintf(stderr, "Pixel saturation must be between in range of 50-255\n");
@@ -219,9 +271,14 @@ static int parse_parameter (const char * tag, const char * value)
             return -1;
         }
         
-    } else if (keymatch(tag, "blink_cmd", 5)) {
-        // Obsolete blink LED feature.
-        strncpy(blink_cmd, value, sizeof(blink_cmd)-1);
+    } else if (keymatch(tag, "lighton_run", 11)) {
+        strncpy(lighton_run, value, sizeof(lighton_run)-1);
+    } else if (keymatch(tag, "lightoff_run", 12)) {
+        strncpy(lightoff_run, value, sizeof(lightoff_run)-1);
+    } else if (keymatch(tag, "lightoffdelay", 13)) {
+        int n = sscanf(value, "%d-%d", &lightoff_min, &lightoff_max);
+        if (n != 1 && n != 2) return -1;
+        if (n == 1) lightoff_max = lightoff_min;
     } else if (keymatch(tag, "savedir", 4)) {
         // Set where output goes
         strncpy(SaveDir,value, sizeof(SaveDir)-1);
@@ -241,10 +298,14 @@ static int parse_parameter (const char * tag, const char * value)
                 }
             }
         }
+    } else if (keymatch(tag, "copyjpgcmd", 5)) {
+        // Set the optional copyjpgcmd value, which can be used to process images to keep
+        // to make them losselssly 5% smaller with jpegtran, provided your on raspberry pi2 or faster.
+        strncpy(CopyJpgCmd, value, sizeof(CopyJpgCmd)-1);
 
     } else if (keymatch(tag, "logtofile", 8)) {
         // Log to a file instead of stdout.  Must log to /ramdisk/log.txt for realtime view to work.
-        strncpy(LogToFile,value, sizeof(SaveDir)-1);
+        strncpy(LogToFile, value, sizeof(SaveDir)-1);
     } else if (keymatch(tag, "movelognames", 12)) {
         // Where to backup logs to.
         strncpy(MoveLogNames,value, sizeof(SaveDir)-1);
